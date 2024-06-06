@@ -15,62 +15,51 @@ base_file['reviewText'] = base_file['reviewText'].astype('string')
 base_file['summary'] = base_file['summary'].astype('string')
 
 # #Wstępna analiza danych
-#
+
 # base_file.info()
 # print(base_file.head())
 
 base_file = base_file.dropna()
-
-
-#
 
 def calculate_word_count(df, column):
     df['word_count'] = df[column].apply(lambda x: len(str(x).split(" ")))
     print(df[[column, 'word_count']].head())
     print(f'Mean: {df.word_count.mean()}')
 
-
 def calculate_char_count(df, column):
     df['char_count'] = df[column].str.len()
     print(df[[column, 'char_count']].head())
     print(f'Mean: {df.char_count.mean()}')
-
 
 def calculate_sentence_count(df, column):
     df['sentence'] = df[column].apply(lambda x: len([word for word in x.split() if word.endswith('.')]))
     print(df[[column, 'sentence']].iloc[:20])
     print(f'Mean: {df.sentence.mean()}')
 
-
 def calculate_exclam_count(df, column):
     df['exclam'] = df[column].apply(lambda x: len([word for word in x.split() if word.endswith('!')]))
     print(df[[column, 'exclam']].iloc[:20])
     print(f'Mean: {df.exclam.mean()}')
 
-
 calculate_word_count(base_file, 'reviewText')
-calculate_char_count(base_file, 'summary')
-calculate_sentence_count(base_file, 'reviewText')
-calculate_exclam_count(base_file, 'reviewText')
+# calculate_char_count(base_file, 'summary')
+# calculate_sentence_count(base_file, 'reviewText')
+# calculate_exclam_count(base_file, 'reviewText')
 
 nltk.download('stopwords')
 stop = stopwords.words('english')
 
-
 def display_stopwords_example():
     print(stop[:10])
-
 
 def calculate_stopwords_count(df, column):
     df['stopwords'] = df[column].apply(lambda x: len([word for word in x.split() if word in stop]))
     print(df[[column, 'stopwords']].head())
     print(f'Mean: {df.stopwords.mean()}')
 
-
 def display_reviewer_counts(df):
     review_counts = df['reviewerName'].value_counts()
     print(review_counts)
-
 
 def plot_ratings_distribution(df, column):
     bins = [1, 2, 3, 4, 5, 6]
@@ -81,30 +70,25 @@ def plot_ratings_distribution(df, column):
     plt.xticks([1, 2, 3, 4, 5])
     plt.show()
 
-
-display_stopwords_example()
-calculate_stopwords_count(base_file, 'reviewText')
+# display_stopwords_example()
+# calculate_stopwords_count(base_file, 'reviewText')
 display_reviewer_counts(base_file)
 plot_ratings_distribution(base_file, 'overall')
-
 
 def transform_helpful(row):
     """Przekształca kolumnę 'helpful', usuwając nawiasy kwadratowe i dzieląc string na dwa elementy."""
     positive, total = map(int, row.strip('[]').split(', '))
     return pd.Series([positive, total])
 
-
 def apply_transform_helpful(df):
     """Stosuje funkcję transform_helpful do DataFrame."""
     df[['helpful_yes', 'helpful_total']] = df['helpful'].apply(transform_helpful)
     print(df[['helpful_yes', 'helpful_total']].describe())
 
-
 def calculate_helpful_ratio(df):
     """Oblicza stosunek pomocnych głosów do całkowitej liczby głosów i dodaje go do DataFrame."""
     df['helpful_ratio'] = df['helpful_yes'] / df['helpful_total']
     print(df[['reviewText', 'helpful_ratio']])
-
 
 def plot_helpful_ratio_distribution(df):
     """Rysuje wykres rozkładu stosunku pomocności."""
@@ -118,8 +102,120 @@ def plot_helpful_ratio_distribution(df):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.show()
 
+# apply_transform_helpful(base_file)
+# calculate_helpful_ratio(base_file)
+# plot_helpful_ratio_distribution(base_file)
 
-apply_transform_helpful(base_file)
-calculate_helpful_ratio(base_file)
-plot_helpful_ratio_distribution(base_file)
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import spacy
+
+
+class TextDataAnalyzer:
+
+    def __init__(self, data):
+        self.data = data
+        self.stemmer = PorterStemmer()
+        self.nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])  # Załadowanie tylko niezbędnych komponentów
+        self.tfidf_matrix = None
+        self.tfidf_features = None
+        nltk.download('punkt')  # Pobieranie niezbędnych zasobów NLTK
+
+    def preprocess_and_analyze_frequency(self):
+        # Normalizacja tekstu
+        self.data['reviewText_processed'] = self.data['reviewText'].apply(
+            lambda x: " ".join(x.lower() for x in x.split()))
+        # Usuwanie nadmiarowych spacji
+        self.data['reviewText_processed'] = self.data['reviewText_processed'].apply(lambda x: " ".join(x.split()))
+        # Usuwanie stopwords
+        stop = stopwords.words('english')
+        self.data['reviewText_processed'] = self.data['reviewText_processed'].apply(
+            lambda x: " ".join(x for x in x.split() if x not in stop))
+        print("Normalized Text:")
+        print(self.data['reviewText_processed'])
+        # Analiza częstotliwości słów
+        freq = pd.Series(' '.join(self.data['reviewText_processed']).split()).value_counts()
+        freq = freq[freq > 500]
+        return freq[:10]
+
+    def stem_text(self):
+        # Stosowanie stemmingu na tekście
+        self.data['StemmedText'] = self.data['reviewText'].apply(lambda x: ' '.join(self.stemmer.stem(word) for word in word_tokenize(x)))
+        return self.data[['reviewText', 'StemmedText']]
+
+    def lemmatize_text(self):
+        # Stosowanie lematyzacji na tekście
+        self.data['LemmatizedText'] = self.data['reviewText'].apply(lambda x: ' '.join(token.lemma_ for token in self.nlp(x)))
+        return self.data[['reviewText', 'LemmatizedText']]
+
+    def vectorize_text(self, max_features=1000):
+
+        tfidf_vectorizer = TfidfVectorizer(max_features=max_features)
+        self.tfidf_matrix = tfidf_vectorizer.fit_transform(self.data['reviewText'])
+        self. dense_tfidf_matrix = self.tfidf_matrix.todense()
+        return self.dense_tfidf_matrix
+
+    def plot_distributions(self):
+        # Rysowanie dystrybucji
+        self.data['word_count'] = self.data['reviewText'].apply(lambda x: len(x.split()))
+        self.data['word_count'].hist(bins=[0, 10, 20, 30, 40, 50], edgecolor='black')
+        plt.title('Distribution of Word Counts')
+        plt.xlabel('Word Count')
+        plt.ylabel('Frequency')
+        plt.show()
+
+analyzer = TextDataAnalyzer(base_file)
+# print("Proccessed Text Results:")
+# print(analyzer.preprocess_and_analyze_frequency())
+print("\nWord Count Distribution:")
+print(analyzer.plot_distributions())
+print("Vectorized Text Results:")
+print(analyzer.vectorize_text())
+# print("Stemmed Text Results:")
+# print(analyzer.stem_text())
+# print("\nLemmatized Text Results:")
+# print(analyzer.lemmatize_text())
+
+import unittest
+
+def setUp():
+    # Przygotowanie danych testowych
+    data = {'reviewText': ['This is a sample review text.', 'Another example of review text.', 'Yet another review.']}
+    df = pd.DataFrame(data)
+    analyzer = TextDataAnalyzer(df)
+    return analyzer
+
+def test_preprocess_and_analyze_frequency():
+    analyzer = setUp()
+    freq = analyzer.preprocess_and_analyze_frequency()
+    assert len(freq) == 3  # Sprawdzenie, czy zwraca 3 najczęstsze słowa
+    assert 'review' in freq.index  # Sprawdzenie, czy słowo 'review' znajduje się w częstościach
+
+def test_stem_text():
+    analyzer = setUp()
+    stemmed_df = analyzer.stem_text()
+    assert len(stemmed_df) == 3  # Sprawdzenie, czy liczba wierszy się nie zmieniła
+
+def test_lemmatize_text():
+    analyzer = setUp()
+    lemmatized_df = analyzer.lemmatize_text()
+    assert len(lemmatized_df) == 3  # Sprawdzenie, czy liczba wierszy się nie zmieniła
+
+def test_vectorize_text():
+    analyzer = setUp()
+    tfidf_matrix = analyzer.vectorize_text()
+    assert tfidf_matrix is not None  # Sprawdzenie, czy macierz TF-IDF nie jest pusta
+
+def test_plot_distributions():
+    # Testowanie metody nie zwracającej wartości, więc można tylko sprawdzić, czy nie ma błędów
+    try:
+        analyzer = setUp()
+        analyzer.plot_distributions()
+    except Exception as e:
+        assert False, f"plot_distributions() raised an exception: {e}"
+
+if __name__ == '__main__':
+    unittest.main()
+
 

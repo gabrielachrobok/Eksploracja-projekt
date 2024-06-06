@@ -155,6 +155,24 @@ class TextDataAnalyzer:
         self.tfidf_matrix = tfidf_vectorizer.fit_transform(self.data['reviewText'])
         self. dense_tfidf_matrix = self.tfidf_matrix.todense()
         return self.dense_tfidf_matrix
+    
+def vectorize_text(self, max_features=1000):
+
+        tfidf_vectorizer = TfidfVectorizer(max_features=max_features)
+        self.tfidf_matrix = tfidf_vectorizer.fit_transform(self.data['reviewText'])
+        self.tfidf_features = tfidf_vectorizer.get_feature_names_out()
+        dense_tfidf_matrix = self.tfidf_matrix.todense()
+
+        # Wyświetlanie słów kluczowych i ich wartości TF-IDF
+        if self.tfidf_features.any():  # Sprawdzamy, czy lista cech nie jest pusta
+            for i in range(len(self.data)):
+                print(f"Document {i + 1}:")
+                for j in range(len(self.tfidf_features)):
+                    if dense_tfidf_matrix[i, j] != 0:
+                        print(f"{self.tfidf_features[j]}: {dense_tfidf_matrix[i, j]}")
+                print("\n")
+
+        return dense_tfidf_matrix
 
     def plot_distributions(self):
         # Rysowanie dystrybucji

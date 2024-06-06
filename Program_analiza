@@ -1,20 +1,15 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly as py
-import plotly.graph_objs as go
 import nltk
 from nltk.corpus import stopwords
+from textblob import TextBlob
 
-
-from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 base_file = pd.read_csv(r'C:\Users\Gabriela\Downloads\Musical_instruments_reviews.csv')
 base_file['reviewText'] = base_file['reviewText'].astype('string')
 base_file['summary'] = base_file['summary'].astype('string')
 
-# #Wstępna analiza danych
 
 # base_file.info()
 # print(base_file.head())
@@ -41,7 +36,7 @@ def calculate_exclam_count(df, column):
     print(df[[column, 'exclam']].iloc[:20])
     print(f'Mean: {df.exclam.mean()}')
 
-calculate_word_count(base_file, 'reviewText')
+# calculate_word_count(base_file, 'reviewText')
 # calculate_char_count(base_file, 'summary')
 # calculate_sentence_count(base_file, 'reviewText')
 # calculate_exclam_count(base_file, 'reviewText')
@@ -72,26 +67,22 @@ def plot_ratings_distribution(df, column):
 
 # display_stopwords_example()
 # calculate_stopwords_count(base_file, 'reviewText')
-display_reviewer_counts(base_file)
-plot_ratings_distribution(base_file, 'overall')
+# display_reviewer_counts(base_file)
+# plot_ratings_distribution(base_file, 'overall')
 
 def transform_helpful(row):
-    """Przekształca kolumnę 'helpful', usuwając nawiasy kwadratowe i dzieląc string na dwa elementy."""
     positive, total = map(int, row.strip('[]').split(', '))
     return pd.Series([positive, total])
 
 def apply_transform_helpful(df):
-    """Stosuje funkcję transform_helpful do DataFrame."""
     df[['helpful_yes', 'helpful_total']] = df['helpful'].apply(transform_helpful)
     print(df[['helpful_yes', 'helpful_total']].describe())
 
 def calculate_helpful_ratio(df):
-    """Oblicza stosunek pomocnych głosów do całkowitej liczby głosów i dodaje go do DataFrame."""
     df['helpful_ratio'] = df['helpful_yes'] / df['helpful_total']
     print(df[['reviewText', 'helpful_ratio']])
 
 def plot_helpful_ratio_distribution(df):
-    """Rysuje wykres rozkładu stosunku pomocności."""
     df['helpful_ratio'] *= 100
     n, bins, _ = plt.hist(df['helpful_ratio'], bins=10, edgecolor='black', alpha=0.0, histtype='step')
     bin_centers = 0.5 * (bins[:-1] + bins[1:])
@@ -117,65 +108,54 @@ class TextDataAnalyzer:
     def __init__(self, data):
         self.data = data
         self.stemmer = PorterStemmer()
-        self.nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])  # Załadowanie tylko niezbędnych komponentów
+        self.nlp = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
         self.tfidf_matrix = None
         self.tfidf_features = None
-        nltk.download('punkt')  # Pobieranie niezbędnych zasobów NLTK
+        nltk.download('punkt')
+        nltk.download('stopwords')
+        self.stop_words = set(stopwords.words('english'))
+
+    def preprocess_text(self):
+        self.data['reviewText_processed'] = self.data['reviewText'].apply(
+            lambda x: " ".join(word.lower() for word in x.split() if word.lower() not in self.stop_words))
+        self.data['reviewText_processed'] = self.data['reviewText_processed'].apply(lambda x: " ".join(x.split()))
+
 
     def preprocess_and_analyze_frequency(self):
-        # Normalizacja tekstu
-        self.data['reviewText_processed'] = self.data['reviewText'].apply(
-            lambda x: " ".join(x.lower() for x in x.split()))
-        # Usuwanie nadmiarowych spacji
-        self.data['reviewText_processed'] = self.data['reviewText_processed'].apply(lambda x: " ".join(x.split()))
-        # Usuwanie stopwords
-        stop = stopwords.words('english')
-        self.data['reviewText_processed'] = self.data['reviewText_processed'].apply(
-            lambda x: " ".join(x for x in x.split() if x not in stop))
+        self.preprocess_text()
         print("Normalized Text:")
-        print(self.data['reviewText_processed'])
-        # Analiza częstotliwości słów
+        print(self.data['reviewText_processed'].head())
+
         freq = pd.Series(' '.join(self.data['reviewText_processed']).split()).value_counts()
         freq = freq[freq > 500]
         return freq[:10]
 
     def stem_text(self):
-        # Stosowanie stemmingu na tekście
         self.data['StemmedText'] = self.data['reviewText'].apply(lambda x: ' '.join(self.stemmer.stem(word) for word in word_tokenize(x)))
         return self.data[['reviewText', 'StemmedText']]
 
     def lemmatize_text(self):
-        # Stosowanie lematyzacji na tekście
         self.data['LemmatizedText'] = self.data['reviewText'].apply(lambda x: ' '.join(token.lemma_ for token in self.nlp(x)))
         return self.data[['reviewText', 'LemmatizedText']]
 
     def vectorize_text(self, max_features=1000):
-
         tfidf_vectorizer = TfidfVectorizer(max_features=max_features)
-        self.tfidf_matrix = tfidf_vectorizer.fit_transform(self.data['reviewText'])
-        self. dense_tfidf_matrix = self.tfidf_matrix.todense()
-        return self.dense_tfidf_matrix
-    
-def vectorize_text(self, max_features=1000):
-
-        tfidf_vectorizer = TfidfVectorizer(max_features=max_features)
-        self.tfidf_matrix = tfidf_vectorizer.fit_transform(self.data['reviewText'])
+        self.tfidf_matrix = tfidf_vectorizer.fit_transform(self.data['reviewText_processed'])
         self.tfidf_features = tfidf_vectorizer.get_feature_names_out()
         dense_tfidf_matrix = self.tfidf_matrix.todense()
+        tfidf_mean_values = np.mean(dense_tfidf_matrix, axis=0).tolist()[0]
+        tfidf_mean_df = pd.DataFrame(list(zip(self.tfidf_features, tfidf_mean_values)), columns=['word', 'tfidf_mean'])
+        tfidf_mean_df = tfidf_mean_df.sort_values(by='tfidf_mean', ascending=False)
 
-        # Wyświetlanie słów kluczowych i ich wartości TF-IDF
-        if self.tfidf_features.any():  # Sprawdzamy, czy lista cech nie jest pusta
-            for i in range(len(self.data)):
-                print(f"Document {i + 1}:")
-                for j in range(len(self.tfidf_features)):
-                    if dense_tfidf_matrix[i, j] != 0:
-                        print(f"{self.tfidf_features[j]}: {dense_tfidf_matrix[i, j]}")
-                print("\n")
+        print("Top words by TF-IDF mean value:")
+        print(tfidf_mean_df.head(10))
 
-        return dense_tfidf_matrix
+        print("\nTF-IDF Matrix (first 5 rows):")
+        df_tfidf_matrix = pd.DataFrame(dense_tfidf_matrix, columns=self.tfidf_features)
+        print(df_tfidf_matrix.head(25))
+
 
     def plot_distributions(self):
-        # Rysowanie dystrybucji
         self.data['word_count'] = self.data['reviewText'].apply(lambda x: len(x.split()))
         self.data['word_count'].hist(bins=[0, 10, 20, 30, 40, 50], edgecolor='black')
         plt.title('Distribution of Word Counts')
@@ -183,57 +163,70 @@ def vectorize_text(self, max_features=1000):
         plt.ylabel('Frequency')
         plt.show()
 
+    def analyze_sentiment(self):
+        self.preprocess_text()
+        self.data['sentiment_score'] = self.data['reviewText'].apply(lambda x: TextBlob(x).sentiment.polarity)
+        return self.data[['reviewText', 'sentiment_score']].head(50)
+
+    def analyze_sentiment_processed(self):
+        self.preprocess_text()
+        self.data['sentiment_score_processed'] = self.data['reviewText_processed'].apply(
+            lambda x: TextBlob(x).sentiment.polarity)
+        return self.data[['reviewText_processed', 'sentiment_score_processed']].head(50)
+
+
+
 analyzer = TextDataAnalyzer(base_file)
+#
 # print("Proccessed Text Results:")
 # print(analyzer.preprocess_and_analyze_frequency())
-print("\nWord Count Distribution:")
-print(analyzer.plot_distributions())
-print("Vectorized Text Results:")
-print(analyzer.vectorize_text())
+# print("\nWord Count Distribution:")
+# print(analyzer.plot_distributions())
+# print("Vectorized Text Results:")
+# print(analyzer.vectorize_text())
 # print("Stemmed Text Results:")
 # print(analyzer.stem_text())
 # print("\nLemmatized Text Results:")
 # print(analyzer.lemmatize_text())
+print("Sentiment Analysis Results:")
+print(analyzer.analyze_sentiment())
+print("\nSentiment Analysis on Processed Text:")
+print(analyzer.analyze_sentiment_processed())
 
 import unittest
 
-def setUp():
-    # Przygotowanie danych testowych
-    data = {'reviewText': ['This is a sample review text.', 'Another example of review text.', 'Yet another review.']}
-    df = pd.DataFrame(data)
+def setUp(base_file):
+    df = pd.DataFrame(base_file)
     analyzer = TextDataAnalyzer(df)
     return analyzer
 
 def test_preprocess_and_analyze_frequency():
-    analyzer = setUp()
+    analyzer = setUp(base_file)
     freq = analyzer.preprocess_and_analyze_frequency()
-    assert len(freq) == 3  # Sprawdzenie, czy zwraca 3 najczęstsze słowa
-    assert 'review' in freq.index  # Sprawdzenie, czy słowo 'review' znajduje się w częstościach
+    assert len(freq) == 3
+    assert 'review' in freq.index
 
 def test_stem_text():
-    analyzer = setUp()
+    analyzer = setUp(base_file)
     stemmed_df = analyzer.stem_text()
-    assert len(stemmed_df) == 3  # Sprawdzenie, czy liczba wierszy się nie zmieniła
+    assert len(stemmed_df) == 3
 
 def test_lemmatize_text():
-    analyzer = setUp()
+    analyzer = setUp(base_file)
     lemmatized_df = analyzer.lemmatize_text()
-    assert len(lemmatized_df) == 3  # Sprawdzenie, czy liczba wierszy się nie zmieniła
+    assert len(lemmatized_df) == 3
 
 def test_vectorize_text():
-    analyzer = setUp()
+    analyzer = setUp(base_file)
     tfidf_matrix = analyzer.vectorize_text()
-    assert tfidf_matrix is not None  # Sprawdzenie, czy macierz TF-IDF nie jest pusta
+    assert tfidf_matrix is not None
 
 def test_plot_distributions():
-    # Testowanie metody nie zwracającej wartości, więc można tylko sprawdzić, czy nie ma błędów
     try:
-        analyzer = setUp()
+        analyzer = setUp(base_file)
         analyzer.plot_distributions()
     except Exception as e:
         assert False, f"plot_distributions() raised an exception: {e}"
 
 if __name__ == '__main__':
     unittest.main()
-
-
